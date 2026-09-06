@@ -32,6 +32,9 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
+            let mut nav_guard = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+            let nav_guard_clone = nav_guard.clone();
+
             let _window = tauri::WebviewWindowBuilder::new(
                 app,
                 "main",
@@ -42,8 +45,16 @@ pub fn run() {
             .inner_size(1100.0, 750.0)
             .min_inner_size(600.0, 500.0)
             .resizable(true)
-            .on_navigation(|url| {
+            .on_navigation(move |url| {
                 let url_str = url.as_str();
+
+                // Guard against duplicate navigation events
+                let mut last_url = nav_guard_clone.lock().unwrap();
+                if *last_url == url_str {
+                    return false;
+                }
+                *last_url = url_str.to_string();
+                drop(last_url);
 
                 eprintln!("[RUST ON_NAVIGATION] URL: {}", url_str);
 
@@ -141,46 +152,79 @@ pub fn run() {
                     }
                 }, true);
 
-                // --- CLIPBOARD IMAGE PASTE HANDLER ---
+                // --- CLIPBOARD IMAGE PASTE HANDLER (Robust) ---
                 (function() {
-                    var pendingDataTransfer = null;
+                    var composerSelectors = [
+                        '[data-testid="conversation-compose-box-input"]',
+                        '[contenteditable="true"][data-tab="10"]',
+                        '[contenteditable="true"][data-tab="9"]',
+                        '.copyable-text[contenteditable="true"]',
+                        'footer [contenteditable="true"]',
+                        'div[contenteditable="true"][role="textbox"]'
+                    ];
 
-                    // Intercept paste events globally
+                    function findComposer() {
+                        for (var i = 0; i < composerSelectors.length; i++) {
+                            var el = document.querySelector(composerSelectors[i]);
+                            if (el && (el.offsetWidth > 0 || el.offsetHeight > 0)) return el;
+                        }
+                        return null;
+                    }
+
                     document.addEventListener('paste', function(e) {
                         var items = e.clipboardData && e.clipboardData.items;
                         if (!items || !items.length) return;
 
                         var hasImage = false;
+                        var imageFile = null;
                         for (var i = 0; i < items.length; i++) {
                             if (items[i].type.indexOf('image') === 0) {
                                 hasImage = true;
+                                imageFile = items[i].getAsFile();
                                 break;
                             }
                         }
-                        if (!hasImage) return;
+                        if (!hasImage || !imageFile) return;
 
-                        // Find the message input composer
-                        var composer = document.querySelector('[data-testid="conversation-compose-box-input"], [contenteditable="true"][data-tab="10"], .copyable-text[contenteditable="true"], footer [contenteditable="true"]');
-                        if (!composer) return;
+                        var composer = findComposer();
+                        if (!composer) {
+                            console.log('[CLIPBOARD] No composer found');
+                            return;
+                        }
 
-                        // Prevent default to handle manually
-                        e.preventDefault();
-                        e.stopPropagation();
+                        console.log('[CLIPBOARD] Image detected, pasting to composer:', imageFile.type, imageFile.size);
 
-                        var file = items[0].getAsFile();
-                        if (!file) return;
+                        // Focus the composer first
+                        composer.focus();
 
-                        // Create a proper ClipboardEvent with files
+                        // Create DataTransfer with the file
                         var dataTransfer = new DataTransfer();
-                        dataTransfer.items.add(file);
+                        dataTransfer.items.add(imageFile);
 
-                        // Try to fire paste on the composer with our DataTransfer
+                        // Dispatch paste event with our custom clipboardData
                         var pasteEvent = new ClipboardEvent('paste', {
                             bubbles: true,
                             cancelable: true,
                             clipboardData: dataTransfer
                         });
-                        composer.dispatchEvent(pasteEvent);
+
+                        // Also try input event as fallback
+                        var inputEvent = new InputEvent('input', {
+                            bubbles: true,
+                            cancelable: true,
+                            inputType: 'insertFromPaste',
+                            dataTransfer: dataTransfer
+                        });
+
+                        // Small delay to ensure focus
+                        setTimeout(function() {
+                            composer.dispatchEvent(pasteEvent);
+                            composer.dispatchEvent(inputEvent);
+                            
+                            // Trigger oninput for React/Vue
+                            var onInputEvent = new Event('input', { bubbles: true });
+                            composer.dispatchEvent(onInputEvent);
+                        }, 50);
                     }, true);
                 })();
             "#)
