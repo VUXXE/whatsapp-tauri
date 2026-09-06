@@ -34,10 +34,6 @@
 - **OS-Level Integration**: Direct integration with system notification daemons (`libnotify` on Linux, `Windows Toast Notifications`, `macOS NSUserNotificationCenter`).
 - **Auto-Granted Permissions**: Pre-configured permission handlers so notification prompts work out-of-the-box without manual browser toggles.
 
-### 🔗 Smart Link Routing & Safety
-- **Default Browser Interception**: Clicking any external URL inside chats automatically launches your system's primary web browser (Chrome, Firefox, Edge, Safari).
-- **Redirect URL Extraction**: Automatically resolves and unwraps WhatsApp link redirectors (`l.whatsapp.com` / `web.whatsapp.com/redirect`) to launch the clean target URL in your browser.
-
 ### ⚡ Extreme Performance & Resource Efficiency
 - **~5.7 MB Executable**: 30x smaller installer footprint compared to ~180MB Electron binaries.
 - **~120 MB RAM Overhead**: Low base memory overhead, saving 1GB+ RAM for gaming, compiling, or heavy creative applications.
