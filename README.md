@@ -23,9 +23,36 @@
 
 ---
 
+## ✨ Key Features Breakdown
+
+### 📱 Full WhatsApp Web Capability
+- **Complete Messaging Suite**: Send and receive text, emojis, voice messages, documents, photos, and videos.
+- **Media & Status**: Full support for WhatsApp Statuses, media previews, and file attachments.
+- **Dark Mode & Themes**: Automatically inherits WhatsApp Web's native Dark Mode and theme settings.
+
+### 🔔 Native Desktop Notifications
+- **OS-Level Integration**: Direct integration with system notification daemons (`libnotify` on Linux, `Windows Toast Notifications`, `macOS NSUserNotificationCenter`).
+- **Auto-Granted Permissions**: Pre-configured permission handlers so notification prompts work out-of-the-box without manual browser toggles.
+
+### 🔗 Smart Link Routing & Safety
+- **Default Browser Interception**: Clicking any external URL inside chats automatically launches your system's primary web browser (Chrome, Firefox, Edge, Safari).
+- **Redirect URL Extraction**: Automatically resolves and unwraps WhatsApp link redirectors (`l.whatsapp.com` / `web.whatsapp.com/redirect`) to launch the clean target URL in your browser.
+
+### ⚡ Extreme Performance & Resource Efficiency
+- **~5.7 MB Executable**: 30x smaller installer footprint compared to ~180MB Electron binaries.
+- **~120 MB RAM Overhead**: Low base memory overhead, saving 1GB+ RAM for gaming, compiling, or heavy creative applications.
+- **Zero Idle CPU Usage**: Uses native OS webview engine events to eliminate idle background CPU polling.
+
+### 🛡️ Privacy & Security First
+- **No Third-Party Telemetry**: Zero tracking scripts, analytics, or external proxies.
+- **Direct E2E Connection**: Connects directly to WhatsApp's official servers with full End-to-End Encryption preserved.
+- **Secure Credentials**: All session tokens and cookies remain stored in your local OS native webview container.
+
+---
+
 ## ❓ Why Tauri Over Electron?
 
-Traditional WhatsApp desktop applications (like Whatsie or the official web wrapper) rely on **Electron**, which bundles a full copy of Google Chromium (~180MB binary) and Node.js runtime inside every single app. This results in heavy RAM usage (1GB+), slow cold starts, and high disk footprint.
+Traditional WhatsApp desktop applications (like Whatsie or official wrappers) rely on **Electron**, which bundles a full copy of Google Chromium (~180MB binary) and Node.js runtime inside every single app. This results in heavy RAM usage (1GB+), slow cold starts, and high disk footprint.
 
 **WhatsApp Tauri** solves this by leveraging **Tauri v2** and **Rust**:
 
@@ -45,20 +72,6 @@ Traditional WhatsApp desktop applications (like Whatsie or the official web wrap
 └──────────────────────────────────────────────┘
 ```
 
-### 🔑 Key Advantages of Tauri
-
-1. **📦 30x Smaller Binary Size**: 
-   Electron packages carry an entire browser engine (~180 MB). **WhatsApp Tauri** compiles down to a native **~5.7 MB** executable because it utilizes the native Webview already present in your operating system (`WebKit2GTK` on Linux, `WebView2` on Windows, `WKWebView` on macOS).
-
-2. **⚡ 8x Lower Memory (RAM) Footprint**: 
-   By reusing system libraries instead of spawning duplicate V8 JavaScript engines and Chromium renderer processes, base app overhead drops from ~460MB to **~120MB**.
-
-3. **🏎️ Instant Startup Time**: 
-   No Node.js runtime initialization needed. The app launches instantly upon execution.
-
-4. **🔒 Memory Safety & Security**: 
-   Built on Rust's strict memory safety guarantees and Tauri's isolated IPC security model.
-
 ---
 
 ## 📊 Benchmark Comparison
@@ -70,16 +83,6 @@ Traditional WhatsApp desktop applications (like Whatsie or the official web wrap
 | **Backend Engine** | Heavy Chromium Bundled | Native OS Webview | 🌿 **Zero Bloat** |
 | **Startup Performance** | Slow / Laggy | Instant | ⚡ **Blazing Fast** |
 | **Security Foundation** | C++ / Node.js | Memory-Safe Rust | 🛡️ **Hardened** |
-
----
-
-## ✨ Features
-
-- 📱 **Full WhatsApp Web Features**: Chat, send media, voice notes, view statuses, and manage groups.
-- 🔔 **Native Desktop Notifications**: Direct integration with system notification daemons (GNOME / Windows / macOS).
-- 🔗 **Smart Link Handler**: Clicking external URLs automatically launches your system's default browser (Chrome, Firefox, Edge, Safari).
-- ⚡ **Ultra-Low Memory Footprint**: Keeps your RAM free for gaming, coding, and heavy workloads.
-- 🌐 **Cross-Platform**: Compiled natively for Windows, macOS, and Linux.
 
 ---
 
