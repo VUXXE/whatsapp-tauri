@@ -128,6 +128,3 @@ The compiled binary will be generated in `src-tauri/target/release/bundle/`.
 
 Distributed under the **MIT License**. See [`LICENSE`](LICENSE) for more details.
 
-<div align="center">
-  Crafted with ❤️ by <a href="https://github.com/VUXXE">VUXXE</a>
-</div>
