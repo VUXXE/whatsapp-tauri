@@ -26,39 +26,15 @@ fn extract_redirect_target(url_str: &str) -> Option<String> {
     None
 }
 
-#[tauri::command]
-fn get_clipboard_image() -> Result<String, String> {
-    eprintln!("[RUST CLIPBOARD] get_clipboard_image called");
-    let output = std::process::Command::new("wl-paste")
-        .args(&["-t", "image/png"])
-        .output()
-        .or_else(|_| {
-            std::process::Command::new("xclip")
-                .args(&["-selection", "clipboard", "-t", "image/png", "-o"])
-                .output()
-        })
-        .map_err(|e| e.to_string())?;
-
-    if output.status.success() && !output.stdout.is_empty() {
-        use base64::Engine;
-        let b64 = base64::engine::general_purpose::STANDARD.encode(&output.stdout);
-        eprintln!("[RUST CLIPBOARD] Found image in clipboard ({} bytes)", output.stdout.len());
-        Ok(format!("data:image/png;base64,{}", b64))
-    } else {
-        eprintln!("[RUST CLIPBOARD] No image in clipboard");
-        Err("No image in clipboard".to_string())
-    }
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
-        .invoke_handler(tauri::generate_handler![get_clipboard_image])
         .setup(|app| {
             let nav_guard = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
             let nav_guard_clone = nav_guard.clone();
+            let app_handle = app.handle().clone();
 
             let _window = tauri::WebviewWindowBuilder::new(
                 app,
@@ -81,83 +57,78 @@ pub fn run() {
                     } catch(e) {}
                 }
 
-                async function tryPasteImageFromSystem() {
+                // Global handler called from Rust when clipboard has an image
+                window.__injectPastedImage = async function(b64) {
                     try {
-                        if (!window.__TAURI__ || !window.__TAURI__.core) {
-                            return false;
-                        }
-                        const dataUrl = await window.__TAURI__.core.invoke('get_clipboard_image');
-                        if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image')) {
-                            return false;
-                        }
-
-                        console.log('[CLIPBOARD] Image received from Rust, dispatching to WhatsApp...');
-                        const res = await fetch(dataUrl);
+                        console.log('[CLIPBOARD] Injected image received from Rust!');
+                        const res = await fetch('data:image/png;base64,' + b64);
                         const blob = await res.blob();
-                        const file = new File([blob], 'screenshot.png', { type: 'image/png' });
+                        const file = new File([blob], 'image.png', { type: 'image/png' });
 
                         const dt = new DataTransfer();
                         dt.items.add(file);
 
-                        const composer = document.querySelector('[data-testid="conversation-compose-box-input"]') ||
-                                         document.querySelector('[contenteditable="true"][role="textbox"]') ||
-                                         document.querySelector('.copyable-text[contenteditable="true"]') ||
-                                         document.activeElement;
+                        // Method 1: Find file input directly or trigger attachment button
+                        let fileInput = document.querySelector('input[type="file"][accept*="image"]') ||
+                                        document.querySelector('input[type="file"]');
 
-                        const mainPanel = document.querySelector('#main') || document.body;
-
-                        // 1. Dispatch paste event
-                        if (composer) {
-                            composer.focus();
-                            const pasteEvt = new Event('paste', { bubbles: true, cancelable: true });
-                            Object.defineProperty(pasteEvt, 'clipboardData', { get: () => dt });
-                            composer.dispatchEvent(pasteEvt);
-                        }
-
-                        // 2. Dispatch drop event on #main
-                        const dropEvt = new DragEvent('drop', { bubbles: true, cancelable: true });
-                        Object.defineProperty(dropEvt, 'dataTransfer', { get: () => dt });
-                        mainPanel.dispatchEvent(dropEvt);
-
-                        console.log('[CLIPBOARD] Paste and Drop events dispatched successfully!');
-                        return true;
-                    } catch(err) {
-                        return false;
-                    }
-                }
-
-                // Intercept keyboard shortcut Ctrl+V / Cmd+V
-                document.addEventListener('keydown', async function(e) {
-                    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
-                        const handled = await tryPasteImageFromSystem();
-                        if (handled) {
-                            e.preventDefault();
-                            e.stopPropagation();
-                        }
-                    }
-                }, true);
-
-                // Intercept context menu paste
-                document.addEventListener('paste', async function(e) {
-                    const items = e.clipboardData ? e.clipboardData.items : null;
-                    let hasNativeImage = false;
-                    if (items) {
-                        for (let i = 0; i < items.length; i++) {
-                            if (items[i].type && items[i].type.startsWith('image/')) {
-                                hasNativeImage = true;
-                                break;
+                        if (!fileInput) {
+                            const attachBtn = document.querySelector('[data-testid="clip"]') ||
+                                              document.querySelector('[data-icon="attach-menu-plus"]') ||
+                                              document.querySelector('[data-icon="plus"]') ||
+                                              document.querySelector('button[aria-label="Attach"]') ||
+                                              document.querySelector('button[title="Attach"]') ||
+                                              document.querySelector('span[data-icon="plus"]') ||
+                                              document.querySelector('span[data-icon="attach-menu-plus"]');
+                            if (attachBtn) {
+                                attachBtn.click();
+                                await new Promise(r => setTimeout(r, 80));
+                                fileInput = document.querySelector('input[type="file"][accept*="image"]') ||
+                                            document.querySelector('input[type="file"]');
                             }
                         }
-                    }
-                    if (!hasNativeImage) {
-                        const handled = await tryPasteImageFromSystem();
-                        if (handled) {
-                            e.preventDefault();
-                            e.stopPropagation();
-                        }
-                    }
-                }, true);
 
+                        if (fileInput) {
+                            fileInput.files = dt.files;
+                            fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+                            console.log('[CLIPBOARD] Fired change event on fileInput successfully!');
+                            return;
+                        }
+
+                        // Method 2: Dispatch synthetic paste and drop on active elements
+                        const targets = [
+                            document.activeElement,
+                            document.querySelector('[data-testid="conversation-compose-box-input"]'),
+                            document.querySelector('div[contenteditable="true"]'),
+                            document.querySelector('#main'),
+                            document.body
+                        ];
+
+                        for (const target of targets) {
+                            if (!target) continue;
+                            try {
+                                const pasteEvt = new Event('paste', { bubbles: true, cancelable: true });
+                                Object.defineProperty(pasteEvt, 'clipboardData', { get: () => dt });
+                                target.dispatchEvent(pasteEvt);
+
+                                const dropEvt = new DragEvent('drop', { bubbles: true, cancelable: true });
+                                Object.defineProperty(dropEvt, 'dataTransfer', { get: () => dt });
+                                target.dispatchEvent(dropEvt);
+                            } catch(e) {}
+                        }
+                    } catch(err) {
+                        console.error('[CLIPBOARD] Injection error:', err);
+                    }
+                };
+
+                // Trigger Rust clipboard check on Ctrl+V / Cmd+V
+                document.addEventListener('keydown', function(e) {
+                    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
+                        window.location.href = 'https://get-clipboard-image.invalid/?t=' + Date.now();
+                    }
+                }, false);
+
+                // External link handling
                 function triggerExternalOpen(url) {
                     if (!url || typeof url !== 'string') return;
                     if (url.startsWith('http://') || url.startsWith('https://')) {
@@ -202,6 +173,39 @@ pub fn run() {
             "#)
             .on_navigation(move |url| {
                 let url_str = url.as_str();
+
+                // Clipboard image bridge: check Linux system clipboard
+                if url_str.contains("get-clipboard-image.invalid") {
+                    eprintln!("[RUST CLIPBOARD] Intercepted navigation trigger to read system clipboard");
+
+                    let output = std::process::Command::new("wl-paste")
+                        .args(&["-t", "image/png"])
+                        .output()
+                        .or_else(|_| {
+                            std::process::Command::new("xclip")
+                                .args(&["-selection", "clipboard", "-t", "image/png", "-o"])
+                                .output()
+                        });
+
+                    if let Ok(out) = output {
+                        if out.status.success() && !out.stdout.is_empty() {
+                            use base64::Engine;
+                            let b64 = base64::engine::general_purpose::STANDARD.encode(&out.stdout);
+                            eprintln!("[RUST CLIPBOARD] Found {} bytes of image in system clipboard! Injecting into webview...", out.stdout.len());
+
+                            let js = format!(
+                                "if (window.__injectPastedImage) {{ window.__injectPastedImage('{}'); }}",
+                                b64
+                            );
+                            if let Some(win) = app_handle.get_webview_window("main") {
+                                let _ = win.eval(&js);
+                            }
+                        } else {
+                            eprintln!("[RUST CLIPBOARD] Clipboard has text or no image data");
+                        }
+                    }
+                    return false;
+                }
 
                 let mut last_url = nav_guard_clone.lock().unwrap();
                 if *last_url == url_str {
