@@ -26,15 +26,39 @@ fn extract_redirect_target(url_str: &str) -> Option<String> {
     None
 }
 
+#[tauri::command]
+fn get_clipboard_image() -> Result<String, String> {
+    eprintln!("[RUST CLIPBOARD] get_clipboard_image called");
+    let output = std::process::Command::new("wl-paste")
+        .args(&["-t", "image/png"])
+        .output()
+        .or_else(|_| {
+            std::process::Command::new("xclip")
+                .args(&["-selection", "clipboard", "-t", "image/png", "-o"])
+                .output()
+        })
+        .map_err(|e| e.to_string())?;
+
+    if output.status.success() && !output.stdout.is_empty() {
+        use base64::Engine;
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&output.stdout);
+        eprintln!("[RUST CLIPBOARD] Found image in clipboard ({} bytes)", output.stdout.len());
+        Ok(format!("data:image/png;base64,{}", b64))
+    } else {
+        eprintln!("[RUST CLIPBOARD] No image in clipboard");
+        Err("No image in clipboard".to_string())
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
+        .invoke_handler(tauri::generate_handler![get_clipboard_image])
         .setup(|app| {
             let nav_guard = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
             let nav_guard_clone = nav_guard.clone();
-            let app_handle = app.handle().clone();
 
             let _window = tauri::WebviewWindowBuilder::new(
                 app,
@@ -57,63 +81,82 @@ pub fn run() {
                     } catch(e) {}
                 }
 
-                // Global handler to convert Base64 image from Rust system clipboard into native JS File & paste to WhatsApp
-                window.__pasteBase64Image = function(dataUrl) {
+                async function tryPasteImageFromSystem() {
                     try {
-                        var arr = dataUrl.split(',');
-                        var mime = arr[0].match(/:(.*?);/)[1];
-                        var bstr = atob(arr[1]);
-                        var n = bstr.length;
-                        var u8arr = new Uint8Array(n);
-                        while (n--) {
-                            u8arr[n] = bstr.charCodeAt(n);
+                        if (!window.__TAURI__ || !window.__TAURI__.core) {
+                            return false;
                         }
-                        var file = new File([u8arr], "pasted_image.png", { type: mime });
+                        const dataUrl = await window.__TAURI__.core.invoke('get_clipboard_image');
+                        if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image')) {
+                            return false;
+                        }
 
-                        var composerSelectors = [
-                            '[data-testid="conversation-compose-box-input"]',
-                            '[contenteditable="true"][data-tab="10"]',
-                            '[contenteditable="true"][data-tab="9"]',
-                            '.copyable-text[contenteditable="true"]',
-                            'footer [contenteditable="true"]',
-                            'div[contenteditable="true"][role="textbox"]'
-                        ];
+                        console.log('[CLIPBOARD] Image received from Rust, dispatching to WhatsApp...');
+                        const res = await fetch(dataUrl);
+                        const blob = await res.blob();
+                        const file = new File([blob], 'screenshot.png', { type: 'image/png' });
 
-                        var composer = null;
-                        for (var i = 0; i < composerSelectors.length; i++) {
-                            var el = document.querySelector(composerSelectors[i]);
-                            if (el && (el.offsetWidth > 0 || el.offsetHeight > 0)) {
-                                composer = el;
+                        const dt = new DataTransfer();
+                        dt.items.add(file);
+
+                        const composer = document.querySelector('[data-testid="conversation-compose-box-input"]') ||
+                                         document.querySelector('[contenteditable="true"][role="textbox"]') ||
+                                         document.querySelector('.copyable-text[contenteditable="true"]') ||
+                                         document.activeElement;
+
+                        const mainPanel = document.querySelector('#main') || document.body;
+
+                        // 1. Dispatch paste event
+                        if (composer) {
+                            composer.focus();
+                            const pasteEvt = new Event('paste', { bubbles: true, cancelable: true });
+                            Object.defineProperty(pasteEvt, 'clipboardData', { get: () => dt });
+                            composer.dispatchEvent(pasteEvt);
+                        }
+
+                        // 2. Dispatch drop event on #main
+                        const dropEvt = new DragEvent('drop', { bubbles: true, cancelable: true });
+                        Object.defineProperty(dropEvt, 'dataTransfer', { get: () => dt });
+                        mainPanel.dispatchEvent(dropEvt);
+
+                        console.log('[CLIPBOARD] Paste and Drop events dispatched successfully!');
+                        return true;
+                    } catch(err) {
+                        return false;
+                    }
+                }
+
+                // Intercept keyboard shortcut Ctrl+V / Cmd+V
+                document.addEventListener('keydown', async function(e) {
+                    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
+                        const handled = await tryPasteImageFromSystem();
+                        if (handled) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                        }
+                    }
+                }, true);
+
+                // Intercept context menu paste
+                document.addEventListener('paste', async function(e) {
+                    const items = e.clipboardData ? e.clipboardData.items : null;
+                    let hasNativeImage = false;
+                    if (items) {
+                        for (let i = 0; i < items.length; i++) {
+                            if (items[i].type && items[i].type.startsWith('image/')) {
+                                hasNativeImage = true;
                                 break;
                             }
                         }
-
-                        if (!composer) {
-                            composer = document.querySelector('div[contenteditable="true"]') || document.querySelector('#main');
-                        }
-
-                        if (!composer) {
-                            console.log('[CLIPBOARD] No composer element found');
-                            return;
-                        }
-
-                        composer.focus();
-
-                        var dataTransfer = new DataTransfer();
-                        dataTransfer.items.add(file);
-
-                        var pasteEvent = new ClipboardEvent('paste', {
-                            bubbles: true,
-                            cancelable: true,
-                            clipboardData: dataTransfer
-                        });
-
-                        composer.dispatchEvent(pasteEvent);
-                        console.log('[CLIPBOARD] Dispatched image from system clipboard to WhatsApp Web!');
-                    } catch(err) {
-                        console.error('[CLIPBOARD] Error processing base64 image:', err);
                     }
-                };
+                    if (!hasNativeImage) {
+                        const handled = await tryPasteImageFromSystem();
+                        if (handled) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                        }
+                    }
+                }, true);
 
                 function triggerExternalOpen(url) {
                     if (!url || typeof url !== 'string') return;
@@ -133,18 +176,27 @@ pub fn run() {
                     return realWindowOpen.apply(this, arguments);
                 };
 
-                // Listen for Ctrl+V / Cmd+V to trigger Rust system clipboard read
-                document.addEventListener('keydown', function(e) {
-                    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
-                        var iframe = document.createElement('iframe');
-                        iframe.style.display = 'none';
-                        iframe.src = 'https://get-clipboard-image.invalid/?t=' + Date.now();
-                        (document.body || document.documentElement).appendChild(iframe);
-                        setTimeout(function() {
-                            if (iframe && iframe.parentNode) {
-                                iframe.parentNode.removeChild(iframe);
+                document.addEventListener('click', function(e) {
+                    var target = e.target;
+                    while (target && target !== document) {
+                        if (target.tagName === 'A' && target.href) {
+                            var href = target.href;
+                            if (href.includes('l.whatsapp.com') || href.includes('/redirect')) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                window.location.href = href;
+                                return;
                             }
-                        }, 1000);
+                            if (!href.includes('web.whatsapp.com') && !href.includes('whatsapp.net')) {
+                                if (href.startsWith('http://') || href.startsWith('https://')) {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    triggerExternalOpen(href);
+                                    return;
+                                }
+                            }
+                        }
+                        target = target.parentNode;
                     }
                 }, true);
             "#)
@@ -159,40 +211,6 @@ pub fn run() {
                 drop(last_url);
 
                 eprintln!("[RUST ON_NAVIGATION] URL: {}", url_str);
-
-                if url_str.contains("get-clipboard-image.invalid") {
-                    eprintln!("[RUST CLIPBOARD] Reading Linux system clipboard image...");
-
-                    let output = std::process::Command::new("wl-paste")
-                        .args(&["-t", "image/png"])
-                        .output()
-                        .or_else(|_| {
-                            std::process::Command::new("xclip")
-                                .args(&["-selection", "clipboard", "-t", "image/png", "-o"])
-                                .output()
-                        });
-
-                    if let Ok(out) = output {
-                        if out.status.success() && !out.stdout.is_empty() {
-                            use base64::Engine;
-                            let b64 = base64::engine::general_purpose::STANDARD.encode(&out.stdout);
-                            eprintln!("[RUST CLIPBOARD] Successfully read {} bytes of PNG from system clipboard!", out.stdout.len());
-
-                            let js = format!(
-                                "if (window.__pasteBase64Image) {{ window.__pasteBase64Image('data:image/png;base64,{}'); }}",
-                                b64
-                            );
-                            if let Some(win) = app_handle.get_webview_window("main") {
-                                let _ = win.eval(&js);
-                            }
-                        } else {
-                            eprintln!("[RUST CLIPBOARD] Clipboard does not contain image/png data");
-                        }
-                    } else {
-                        eprintln!("[RUST CLIPBOARD] Failed to run wl-paste or xclip");
-                    }
-                    return false;
-                }
 
                 if url_str.contains("open-external-link.invalid") {
                     if let Some(target_url) = url
