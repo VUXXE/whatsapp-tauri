@@ -4361,8 +4361,9 @@ dependencies = [
 
 [[package]]
 name = "whatsapp-tauri"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
+ "open",
  "serde",
  "serde_json",
  "tauri",
