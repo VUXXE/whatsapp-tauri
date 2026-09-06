@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "identifier": "com.exu.whatsapp-tauri",
   "build": {
+    "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"
   },
   "app": {
