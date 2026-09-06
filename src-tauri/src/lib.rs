@@ -4,6 +4,7 @@ use tauri::WebviewUrl;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let _window = tauri::WebviewWindowBuilder::new(
                 app,
@@ -24,6 +25,18 @@ pub fn run() {
                     true
                 }
             })
+            .initialization_script(r#"
+                // Auto-grant notification permissions to WhatsApp Web
+                if ('Notification' in window) {
+                    Notification.requestPermission = function(cb) {
+                        if (typeof cb === 'function') cb('granted');
+                        return Promise.resolve('granted');
+                    };
+                    try {
+                        Object.defineProperty(Notification, 'permission', { get: function() { return 'granted'; } });
+                    } catch(e) {}
+                }
+            "#)
             .build()?;
             Ok(())
         })
