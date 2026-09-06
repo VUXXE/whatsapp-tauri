@@ -4467,6 +4467,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-notification",
  "tauri-plugin-opener",
+ "url",
 ]
 
 [[package]]

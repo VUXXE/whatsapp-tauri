@@ -1,5 +1,31 @@
 use tauri::WebviewUrl;
 
+fn extract_redirect_target(url_str: &str) -> Option<String> {
+    let url = url::Url::parse(url_str).ok()?;
+
+    if url.host_str() == Some("l.whatsapp.com") && url.path() == "/r" {
+        if let Some(target) = url
+            .query_pairs()
+            .find(|(k, _)| k == "u")
+            .map(|(_, v)| v.into_owned())
+        {
+            return Some(target);
+        }
+    }
+
+    if url.host_str() == Some("web.whatsapp.com") && url.path() == "/redirect" {
+        if let Some(target) = url
+            .query_pairs()
+            .find(|(k, _)| k == "u")
+            .map(|(_, v)| v.into_owned())
+        {
+            return Some(target);
+        }
+    }
+
+    None
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -19,27 +45,43 @@ pub fn run() {
             .on_navigation(|url| {
                 let url_str = url.as_str();
 
-                // Intercept custom redirect trigger from iframe/JS
+                if let Some(target_url) = extract_redirect_target(url_str) {
+                    let _ = open::that(target_url);
+                    return false;
+                }
+
                 if url_str.contains("open-external-link.invalid") {
-                    for (k, v) in url.query_pairs() {
-                        if k == "url" {
-                            let _ = open::that(v.as_ref());
-                            break;
-                        }
+                    if let Some(target_url) = url
+                        .query_pairs()
+                        .find(|(k, _)| k == "url")
+                        .map(|(_, v)| v.into_owned())
+                    {
+                        let _ = open::that(target_url);
                     }
                     return false;
                 }
 
                 let host = url.host_str().unwrap_or("");
-                if !host.is_empty() && !host.ends_with("whatsapp.com") && !host.ends_with("whatsapp.net") {
-                    let _ = open::that(url_str);
+                let is_whatsapp_domain =
+                    host.ends_with("whatsapp.com") || host.ends_with("whatsapp.net");
+
+                let is_main_app = is_whatsapp_domain
+                    && !url_str.contains("/redirect")
+                    && host != "l.whatsapp.com";
+
+                if is_main_app {
+                    true
+                } else if is_whatsapp_domain {
+                    if let Some(target_url) = extract_redirect_target(url_str) {
+                        let _ = open::that(target_url);
+                    }
                     false
                 } else {
-                    true
+                    let _ = open::that(url_str);
+                    false
                 }
             })
             .initialization_script(r#"
-                // 1. Auto-grant notification permissions
                 if ('Notification' in window) {
                     Notification.requestPermission = function(cb) {
                         if (typeof cb === 'function') cb('granted');
@@ -50,7 +92,6 @@ pub fn run() {
                     } catch(e) {}
                 }
 
-                // Helper to trigger Rust navigation interceptor
                 function openInBrowser(url) {
                     if (!url || typeof url !== 'string') return;
                     if (url.startsWith('http://') || url.startsWith('https://')) {
@@ -72,7 +113,6 @@ pub fn run() {
                     }
                 }
 
-                // 2. Override window.open
                 var realWindowOpen = window.open;
                 window.open = function(url, target, features) {
                     if (url && typeof url === 'string' && !url.includes('web.whatsapp.com') && !url.includes('whatsapp.net')) {
@@ -82,12 +122,25 @@ pub fn run() {
                     return realWindowOpen.apply(this, arguments);
                 };
 
-                // 3. Intercept clicks on links globally
                 document.addEventListener('click', function(e) {
                     var target = e.target;
                     while (target && target !== document) {
                         if (target.tagName === 'A' && target.href) {
                             var href = target.href;
+                            if (href.includes('l.whatsapp.com') || href.includes('/redirect')) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                var iframe = document.createElement('iframe');
+                                iframe.style.display = 'none';
+                                iframe.src = href;
+                                (document.body || document.documentElement).appendChild(iframe);
+                                setTimeout(function() {
+                                    if (iframe && iframe.parentNode) {
+                                        iframe.parentNode.removeChild(iframe);
+                                    }
+                                }, 1000);
+                                return;
+                            }
                             if (!href.includes('web.whatsapp.com') && !href.includes('whatsapp.net')) {
                                 if (href.startsWith('http://') || href.startsWith('https://')) {
                                     e.preventDefault();
