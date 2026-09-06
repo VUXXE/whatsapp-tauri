@@ -89,9 +89,9 @@ pub fn run() {
             .min_inner_size(600.0, 500.0)
             .resizable(true)
             .initialization_script(INJECTED_SCRIPT)
-            // Handle file drops ourselves so we can feed them to WhatsApp
-            // through the file bridge (instead of a broken native drop).
-            .disable_drag_drop_handler()
+            // NOTE: keep Tauri's drag-drop handler ENABLED — on Linux the
+            // webview never delivers drops into the page DOM, so the handler
+            // is our only source of dropped paths (via WindowEvent::DragDrop).
             .on_download(downloads::handle_download)
             .on_navigation(move |url| {
                 let url_str = url.as_str();
@@ -169,14 +169,15 @@ pub fn run() {
 
             let window = builder.build()?;
 
-            // Drag-and-drop: read dropped files in Rust and inject them
-            // into the page through the file bridge.
+            // Drag-and-drop: capture OS drops at window level and stream
+            // them into the page through the file bridge.
             let drop_window = window.clone();
-            window.on_webview_event(move |event| {
-                if let tauri::WebviewEvent::DragDrop(e) = event {
+            window.on_window_event(move |event| {
+                if let tauri::WindowEvent::DragDrop(e) = event {
                     if let tauri::DragDropEvent::Drop { paths, .. } = e {
-                        eprintln!("[DROP] {} path(s) dropped", paths.len());
-                        filebridge::inject_paths(&drop_window, paths);
+                        eprintln!("[DROP] OS drop: {} path(s)", paths.len());
+                        let expanded = filebridge::expand_paths(paths);
+                        filebridge::inject_paths(&drop_window, &expanded);
                     }
                 }
             });
