@@ -2,58 +2,72 @@
 
 A super lightweight, cross-platform desktop client for **WhatsApp Web** built with **Tauri v2** and **Rust**.
 
-Designed as a high-performance alternative to resource-heavy Electron apps like Whatsie / Official Desktop Web wrappers.
+Designed as a high-performance, low-memory alternative to resource-heavy Electron apps (like Whatsie or official web wrappers).
 
 ---
 
-## ⚡ Performance Comparison
+## 📥 Download & Installation
 
-| Metric | Official / Whatsie (Electron) | **WhatsApp Tauri** |
+Download the latest version for your operating system from the **[GitHub Releases Page](https://github.com/VUXXE/whatsapp-tauri/releases)**:
+
+| Platform | Recommended Package | Note |
+|---|---|---|
+| 🪟 **Windows** | `.exe` / `.msi` | Double-click installer for Windows 10/11 |
+| 🍎 **macOS** | `.dmg` | Drag to Applications folder (Apple Silicon & Intel) |
+| 🐧 **Linux (Universal)** | `.AppImage` | Portable binary — `chmod +x` & run on any Linux distro |
+| 🐧 **Ubuntu / Debian** | `.deb` | `sudo dpkg -i WhatsApp_*.deb` |
+| 🐧 **Fedora / RHEL** | `.rpm` | `sudo rpm -i WhatsApp-*.rpm` |
+
+---
+
+## ⚡ Performance Benchmark
+
+| Metric | Whatsie / Official (Electron) | **WhatsApp Tauri** |
 |---|---|---|
 | **Executable Size** | ~180 MB | **~5.7 MB** (30x smaller!) |
-| **RAM Usage** | ~1.2 GB | **~140–180 MB** (8x lighter!) |
-| **Backend Engine** | Chromium (bundled) | Native OS Webview (WebKitGTK / WebView2) |
+| **App Process RAM** | ~460 MB | **~120 MB** (8x lighter!) |
+| **Engine** | Bundled Chromium | Native OS Webview (`WebKit2GTK` / `WebView2` / `WKWebView`) |
 | **Startup Time** | Slow | Instant |
 
 ---
 
-## 🛠️ Features
+## ✨ Features
 
-- 📱 Full **WhatsApp Web** functionality
+- 📱 Full **WhatsApp Web** experience
+- 🔔 **Native Desktop Notifications**: Integrated with OS notification daemons (GNOME / Windows / macOS)
+- 🔗 **Smart Link Routing**: External links automatically open in your default browser (Chrome/Firefox), keeping WhatsApp clean
+- ⚡ **Ultra-lightweight**: Extremely low CPU & memory footprint
 - 💻 **Cross-platform**: Linux, Windows, macOS
-- ⚡ **Ultra-lightweight**: Extremely low memory & CPU footprint
-- 🖥️ Custom User-Agent handling for seamless WebKitGTK compatibility
 
 ---
 
-## 📦 Building from Source
+## 🛠️ Building from Source
 
 ### Prerequisites
-- Node.js & npm
-- Rust (`rustc` & `cargo`)
-- `webkit2gtk-4.1` (Linux)
+- [Node.js](https://nodejs.org/) (v18+)
+- [Rust & Cargo](https://www.rust-lang.org/)
+- Linux dependencies: `libwebkit2gtk-4.1-dev` (Linux only)
 
-### Commands
+### Build Commands
 
 ```bash
-# Clone the repository
+# 1. Clone the repository
 git clone https://github.com/VUXXE/whatsapp-tauri.git
 cd whatsapp-tauri
 
-# Install dependencies
+# 2. Install dependencies
 npm install
 
-# Run in Development Mode
+# 3. Run in Development Mode
 npm run tauri dev
 
-# Build Release Binary
+# 4. Build Production Release
 npm run tauri build
 ```
 
-The compiled binary will be available at:
-`src-tauri/target/release/whatsapp-tauri`
+Compiled output will be located in: `src-tauri/target/release/bundle/`
 
 ---
 
 ## 📄 License
-MIT License
+[MIT License](LICENSE) © 2026 Asy-Syahid Abdurrahman Hanan Taqiyya ([VUXXE](https://github.com/VUXXE))
