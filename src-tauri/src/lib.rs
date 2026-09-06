@@ -47,7 +47,6 @@ pub fn run() {
 
                 eprintln!("[RUST ON_NAVIGATION] URL: {}", url_str);
 
-                // Check custom invalid domain trigger from main frame window.location.href
                 if url_str.contains("open-external-link.invalid") {
                     if let Some(target_url) = url
                         .query_pairs()
@@ -60,7 +59,6 @@ pub fn run() {
                     return false;
                 }
 
-                // Check WhatsApp redirect URLs (l.whatsapp.com / web.whatsapp.com/redirect)
                 if let Some(target_url) = extract_redirect_target(url_str) {
                     eprintln!("[RUST REDIRECT TARGET] Opening: {}", target_url);
                     let _ = open::that(target_url);
@@ -105,13 +103,11 @@ pub fn run() {
                     if (!url || typeof url !== 'string') return;
                     if (url.startsWith('http://') || url.startsWith('https://')) {
                         if (!url.includes('web.whatsapp.com') && !url.includes('whatsapp.net')) {
-                            // Main frame navigation trigger - fires on_navigation in Rust immediately!
                             window.location.href = 'https://open-external-link.invalid/?url=' + encodeURIComponent(url);
                         }
                     }
                 }
 
-                // Override window.open
                 var realWindowOpen = window.open;
                 window.open = function(url, target, features) {
                     if (url && typeof url === 'string' && !url.includes('web.whatsapp.com') && !url.includes('whatsapp.net')) {
@@ -121,7 +117,6 @@ pub fn run() {
                     return realWindowOpen.apply(this, arguments);
                 };
 
-                // Click listener on all links / anchors
                 document.addEventListener('click', function(e) {
                     var target = e.target;
                     while (target && target !== document) {
@@ -145,6 +140,49 @@ pub fn run() {
                         target = target.parentNode;
                     }
                 }, true);
+
+                // --- CLIPBOARD IMAGE PASTE HANDLER ---
+                (function() {
+                    var pendingDataTransfer = null;
+
+                    // Intercept paste events globally
+                    document.addEventListener('paste', function(e) {
+                        var items = e.clipboardData && e.clipboardData.items;
+                        if (!items || !items.length) return;
+
+                        var hasImage = false;
+                        for (var i = 0; i < items.length; i++) {
+                            if (items[i].type.indexOf('image') === 0) {
+                                hasImage = true;
+                                break;
+                            }
+                        }
+                        if (!hasImage) return;
+
+                        // Find the message input composer
+                        var composer = document.querySelector('[data-testid="conversation-compose-box-input"], [contenteditable="true"][data-tab="10"], .copyable-text[contenteditable="true"], footer [contenteditable="true"]');
+                        if (!composer) return;
+
+                        // Prevent default to handle manually
+                        e.preventDefault();
+                        e.stopPropagation();
+
+                        var file = items[0].getAsFile();
+                        if (!file) return;
+
+                        // Create a proper ClipboardEvent with files
+                        var dataTransfer = new DataTransfer();
+                        dataTransfer.items.add(file);
+
+                        // Try to fire paste on the composer with our DataTransfer
+                        var pasteEvent = new ClipboardEvent('paste', {
+                            bubbles: true,
+                            cancelable: true,
+                            clipboardData: dataTransfer
+                        });
+                        composer.dispatchEvent(pasteEvent);
+                    }, true);
+                })();
             "#)
             .build()?;
             Ok(())
