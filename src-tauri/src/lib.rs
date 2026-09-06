@@ -1,7 +1,8 @@
 mod downloads;
+mod filebridge;
 mod tray;
 
-use tauri::{WebviewUrl, WebviewWindowBuilder};
+use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
 fn extract_redirect_target(url_str: &str) -> Option<String> {
     let url = url::Url::parse(url_str).ok()?;
@@ -29,9 +30,10 @@ fn extract_redirect_target(url_str: &str) -> Option<String> {
     None
 }
 
-// Injected Scripts: External Link Router + Powertools
+// Injected Scripts: Powertools + File Bridge + External Link Router
 const INJECTED_SCRIPT: &str = concat!(
     include_str!("powertools.js"),
+    include_str!("filebridge.js"),
     r#"
     // External link routing
     document.addEventListener('click', function(e) {
@@ -74,6 +76,7 @@ pub fn run() {
 
             let nav_guard = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
             let nav_guard_clone = nav_guard.clone();
+            let app_handle = app.handle().clone();
 
             let builder = WebviewWindowBuilder::new(
                 app,
@@ -86,9 +89,32 @@ pub fn run() {
             .min_inner_size(600.0, 500.0)
             .resizable(true)
             .initialization_script(INJECTED_SCRIPT)
+            // Handle file drops ourselves so we can feed them to WhatsApp
+            // through the file bridge (instead of a broken native drop).
+            .disable_drag_drop_handler()
             .on_download(downloads::handle_download)
             .on_navigation(move |url| {
                 let url_str = url.as_str();
+
+                // JS debug channel: filebridge __report() lands here.
+                if url_str.contains("tauri-log.invalid") {
+                    if let Some(msg) = url
+                        .query_pairs()
+                        .find(|(k, _)| k == "m")
+                        .map(|(_, v)| v.into_owned())
+                    {
+                        eprintln!("[JS] {}", msg);
+                    }
+                    return false;
+                }
+
+                // Clipboard image bridge trigger.
+                if url_str.contains("tauri-clipboard.invalid") {
+                    if let Some(win) = app_handle.get_webview_window("main") {
+                        filebridge::inject_clipboard(&win);
+                    }
+                    return false;
+                }
 
                 let mut last_url = nav_guard_clone.lock().unwrap();
                 if *last_url == url_str {
@@ -141,7 +167,20 @@ pub fn run() {
                 }
             });
 
-            builder.build()?;
+            let window = builder.build()?;
+
+            // Drag-and-drop: read dropped files in Rust and inject them
+            // into the page through the file bridge.
+            let drop_window = window.clone();
+            window.on_webview_event(move |event| {
+                if let tauri::WebviewEvent::DragDrop(e) = event {
+                    if let tauri::DragDropEvent::Drop { paths, .. } = e {
+                        eprintln!("[DROP] {} path(s) dropped", paths.len());
+                        filebridge::inject_paths(&drop_window, paths);
+                    }
+                }
+            });
+
             Ok(())
         })
         .on_window_event(|window, event| {
