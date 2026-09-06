@@ -45,19 +45,25 @@ pub fn run() {
             .on_navigation(|url| {
                 let url_str = url.as_str();
 
-                if let Some(target_url) = extract_redirect_target(url_str) {
-                    let _ = open::that(target_url);
-                    return false;
-                }
+                eprintln!("[RUST ON_NAVIGATION] URL: {}", url_str);
 
+                // Check custom invalid domain trigger from main frame window.location.href
                 if url_str.contains("open-external-link.invalid") {
                     if let Some(target_url) = url
                         .query_pairs()
                         .find(|(k, _)| k == "url")
                         .map(|(_, v)| v.into_owned())
                     {
+                        eprintln!("[RUST OPENING BROWSER] Target: {}", target_url);
                         let _ = open::that(target_url);
                     }
+                    return false;
+                }
+
+                // Check WhatsApp redirect URLs (l.whatsapp.com / web.whatsapp.com/redirect)
+                if let Some(target_url) = extract_redirect_target(url_str) {
+                    eprintln!("[RUST REDIRECT TARGET] Opening: {}", target_url);
+                    let _ = open::that(target_url);
                     return false;
                 }
 
@@ -70,13 +76,16 @@ pub fn run() {
                     && host != "l.whatsapp.com";
 
                 if is_main_app {
+                    eprintln!("[RUST] Allowing main app navigation");
                     true
                 } else if is_whatsapp_domain {
                     if let Some(target_url) = extract_redirect_target(url_str) {
+                        eprintln!("[RUST] Opening extracted target: {}", target_url);
                         let _ = open::that(target_url);
                     }
                     false
                 } else {
+                    eprintln!("[RUST] Opening direct external URL: {}", url_str);
                     let _ = open::that(url_str);
                     false
                 }
@@ -92,36 +101,27 @@ pub fn run() {
                     } catch(e) {}
                 }
 
-                function openInBrowser(url) {
+                function triggerExternalOpen(url) {
                     if (!url || typeof url !== 'string') return;
                     if (url.startsWith('http://') || url.startsWith('https://')) {
                         if (!url.includes('web.whatsapp.com') && !url.includes('whatsapp.net')) {
-                            try {
-                                var iframe = document.createElement('iframe');
-                                iframe.style.display = 'none';
-                                iframe.src = 'https://open-external-link.invalid/?url=' + encodeURIComponent(url);
-                                (document.body || document.documentElement).appendChild(iframe);
-                                setTimeout(function() {
-                                    if (iframe && iframe.parentNode) {
-                                        iframe.parentNode.removeChild(iframe);
-                                    }
-                                }, 1000);
-                            } catch(err) {
-                                console.error('Tauri Link Interceptor Error:', err);
-                            }
+                            // Main frame navigation trigger - fires on_navigation in Rust immediately!
+                            window.location.href = 'https://open-external-link.invalid/?url=' + encodeURIComponent(url);
                         }
                     }
                 }
 
+                // Override window.open
                 var realWindowOpen = window.open;
                 window.open = function(url, target, features) {
                     if (url && typeof url === 'string' && !url.includes('web.whatsapp.com') && !url.includes('whatsapp.net')) {
-                        openInBrowser(url);
+                        triggerExternalOpen(url);
                         return null;
                     }
                     return realWindowOpen.apply(this, arguments);
                 };
 
+                // Click listener on all links / anchors
                 document.addEventListener('click', function(e) {
                     var target = e.target;
                     while (target && target !== document) {
@@ -130,22 +130,14 @@ pub fn run() {
                             if (href.includes('l.whatsapp.com') || href.includes('/redirect')) {
                                 e.preventDefault();
                                 e.stopPropagation();
-                                var iframe = document.createElement('iframe');
-                                iframe.style.display = 'none';
-                                iframe.src = href;
-                                (document.body || document.documentElement).appendChild(iframe);
-                                setTimeout(function() {
-                                    if (iframe && iframe.parentNode) {
-                                        iframe.parentNode.removeChild(iframe);
-                                    }
-                                }, 1000);
+                                window.location.href = href;
                                 return;
                             }
                             if (!href.includes('web.whatsapp.com') && !href.includes('whatsapp.net')) {
                                 if (href.startsWith('http://') || href.startsWith('https://')) {
                                     e.preventDefault();
                                     e.stopPropagation();
-                                    openInBrowser(href);
+                                    triggerExternalOpen(href);
                                     return;
                                 }
                             }
