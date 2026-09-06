@@ -4460,6 +4460,7 @@ dependencies = [
 name = "whatsapp-tauri"
 version = "1.0.0"
 dependencies = [
+ "base64 0.22.1",
  "open",
  "serde",
  "serde_json",
