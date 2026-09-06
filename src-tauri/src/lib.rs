@@ -1,18 +1,10 @@
 use tauri::WebviewUrl;
 
-#[tauri::command]
-fn open_external(url: String) {
-    if !url.is_empty() {
-        let _ = open::that(url);
-    }
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
-        .invoke_handler(tauri::generate_handler![open_external])
         .setup(|app| {
             let _window = tauri::WebviewWindowBuilder::new(
                 app,
@@ -25,15 +17,29 @@ pub fn run() {
             .min_inner_size(600.0, 500.0)
             .resizable(true)
             .on_navigation(|url| {
+                let url_str = url.as_str();
+
+                // Intercept custom redirect trigger from iframe/JS
+                if url_str.contains("open-external-link.invalid") {
+                    for (k, v) in url.query_pairs() {
+                        if k == "url" {
+                            let _ = open::that(v.as_ref());
+                            break;
+                        }
+                    }
+                    return false;
+                }
+
                 let host = url.host_str().unwrap_or("");
                 if !host.is_empty() && !host.ends_with("whatsapp.com") && !host.ends_with("whatsapp.net") {
-                    let _ = open::that(url.as_str());
+                    let _ = open::that(url_str);
                     false
                 } else {
                     true
                 }
             })
             .initialization_script(r#"
+                // 1. Auto-grant notification permissions
                 if ('Notification' in window) {
                     Notification.requestPermission = function(cb) {
                         if (typeof cb === 'function') cb('granted');
@@ -44,17 +50,29 @@ pub fn run() {
                     } catch(e) {}
                 }
 
+                // Helper to trigger Rust navigation interceptor
                 function openInBrowser(url) {
-                    if (!url) return;
+                    if (!url || typeof url !== 'string') return;
                     if (url.startsWith('http://') || url.startsWith('https://')) {
                         if (!url.includes('web.whatsapp.com') && !url.includes('whatsapp.net')) {
-                            if (window.__TAURI__ && window.__TAURI__.core) {
-                                window.__TAURI__.core.invoke('open_external', { url: url });
+                            try {
+                                var iframe = document.createElement('iframe');
+                                iframe.style.display = 'none';
+                                iframe.src = 'https://open-external-link.invalid/?url=' + encodeURIComponent(url);
+                                (document.body || document.documentElement).appendChild(iframe);
+                                setTimeout(function() {
+                                    if (iframe && iframe.parentNode) {
+                                        iframe.parentNode.removeChild(iframe);
+                                    }
+                                }, 1000);
+                            } catch(err) {
+                                console.error('Tauri Link Interceptor Error:', err);
                             }
                         }
                     }
                 }
 
+                // 2. Override window.open
                 var realWindowOpen = window.open;
                 window.open = function(url, target, features) {
                     if (url && typeof url === 'string' && !url.includes('web.whatsapp.com') && !url.includes('whatsapp.net')) {
@@ -64,17 +82,22 @@ pub fn run() {
                     return realWindowOpen.apply(this, arguments);
                 };
 
+                // 3. Intercept clicks on links globally
                 document.addEventListener('click', function(e) {
-                    var anchor = e.target && e.target.closest ? e.target.closest('a') : null;
-                    if (anchor && anchor.href) {
-                        var href = anchor.href;
-                        if (!href.includes('web.whatsapp.com') && !href.includes('whatsapp.net')) {
-                            if (href.startsWith('http://') || href.startsWith('https://')) {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                openInBrowser(href);
+                    var target = e.target;
+                    while (target && target !== document) {
+                        if (target.tagName === 'A' && target.href) {
+                            var href = target.href;
+                            if (!href.includes('web.whatsapp.com') && !href.includes('whatsapp.net')) {
+                                if (href.startsWith('http://') || href.startsWith('https://')) {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    openInBrowser(href);
+                                    return;
+                                }
                             }
                         }
+                        target = target.parentNode;
                     }
                 }, true);
             "#)
