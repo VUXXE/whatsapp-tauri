@@ -25,10 +25,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: setup node
-        uses: actions/setup-node@v4
+      - name: setup bun
+        uses: oven-sh/setup-bun@v2
         with:
-          node-version: lts/*
+          bun-version: latest
 
       - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -40,10 +40,10 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libfuse2
 
       - name: install frontend dependencies
-        run: npm install
+        run: bun install
 
       - name: build frontend
-        run: npm run build
+        run: bun run build
 
       - uses: tauri-apps/tauri-action@v0
         env:

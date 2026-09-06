@@ -104,7 +104,7 @@ Pre-compiled production binaries are available on the **[Releases Page](https://
 ## 🛠️ Building from Source
 
 ### Prerequisites
-- [Node.js](https://nodejs.org/) (v18+)
+- [Bun](https://bun.sh/) (v1.0+)
 - [Rust & Cargo](https://www.rust-lang.org/)
 - Linux dependencies: `libwebkit2gtk-4.1-dev` (Linux only)
 
@@ -116,13 +116,13 @@ git clone https://github.com/VUXXE/whatsapp-tauri.git
 cd whatsapp-tauri
 
 # 2. Install Dependencies
-npm install
+bun install
 
 # 3. Run in Development Mode
-npm run tauri dev
+bun run tauri dev
 
 # 4. Build Production Binaries
-npm run tauri build
+bun run tauri build
 ```
 
 The compiled binary will be generated in `src-tauri/target/release/bundle/`.
