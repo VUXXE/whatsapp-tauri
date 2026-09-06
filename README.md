@@ -1,7 +1,7 @@
 <div align="center">
 
   <p align="center">
-  <img src="src-tauri/icons/icon.svg" alt="WhatsApp Tauri Logo" width="128" height="128">
+  <img src="https://raw.githubusercontent.com/VUXXE/whatsapp-tauri/master/src-tauri/icons/icon.svg" alt="WhatsApp Tauri Logo" width="128" height="128">
 </p>
 
 # WhatsApp Tauri
