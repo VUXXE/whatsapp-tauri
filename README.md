@@ -4,6 +4,10 @@
 
 ### Super Lightweight • Blazing Fast • Cross-Platform WhatsApp Desktop Client
 
+<p align="center">
+  <img src="src-tauri/icons/icon.svg" alt="WhatsApp Tauri Logo" width="128" height="128">
+</p>
+
 [![GitHub Release](https://img.shields.io/github/v/release/VUXXE/whatsapp-tauri?style=for-the-badge&color=25D366&labelColor=111827)](https://github.com/VUXXE/whatsapp-tauri/releases)
 [![Build Status](https://img.shields.io/github/actions/workflow/status/VUXXE/whatsapp-tauri/release.yml?style=for-the-badge&label=Build&color=3B82F6&labelColor=111827)](https://github.com/VUXXE/whatsapp-tauri/actions)
 [![License](https://img.shields.io/github/license/VUXXE/whatsapp-tauri?style=for-the-badge&color=10B981&labelColor=111827)](LICENSE)
