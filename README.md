@@ -133,7 +133,3 @@ The compiled binary will be generated in `src-tauri/target/release/bundle/`.
 
 Distributed under the **MIT License**. See [`LICENSE`](LICENSE) for more details.
 
-## 🙏 Acknowledgments
-
-File attach flow (chunked drop streaming, media/document input routing) adapted from [whatRust](https://github.com/karem505/whatRust) (MIT).
-
